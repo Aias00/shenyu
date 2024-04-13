@@ -25,6 +25,7 @@ import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.shenyu.common.concurrent.ShenyuThreadFactory;
+import org.apache.shenyu.common.constant.Constants;
 import org.apache.shenyu.common.constant.ConsulConstants;
 import org.apache.shenyu.common.constant.DefaultPathConstants;
 import org.apache.shenyu.sync.data.api.AuthDataSubscriber;
@@ -103,8 +104,8 @@ public class ConsulSyncDataService extends AbstractPathDataSyncService {
 
     private void watcherData0(final String registerPath) {
         consulIndexes.put(registerPath, 0L);
-        BiConsumer<String, String> updateHandler = (changeData, decodedValue) -> this.event(changeData, decodedValue, registerPath, EventType.PUT);
-        Consumer<String> deleteHandler = removeKey -> this.event(removeKey, null, registerPath, EventType.DELETE);
+        BiConsumer<String, String> updateHandler = (changeData, decodedValue) -> this.event(String.join(Constants.PATH_SEPARATOR, changeData), decodedValue, registerPath, EventType.PUT);
+        Consumer<String> deleteHandler = removeKey -> this.event(String.join(Constants.PATH_SEPARATOR, removeKey), null, registerPath, EventType.DELETE);
         this.executor.schedule(() -> watchConfigKeyValues(registerPath, updateHandler, deleteHandler), -1, TimeUnit.MILLISECONDS);
     }
 
