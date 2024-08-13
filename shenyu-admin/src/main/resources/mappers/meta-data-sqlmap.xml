@@ -72,6 +72,14 @@
          WHERE path = #{path,jdbcType=VARCHAR}
     </select>
 
+    <select id="findByAppNameAndPath" resultMap="BaseResultMap">
+        SElECT
+                <include refid="Base_Column_List"/>
+          FROM meta_data
+         WHERE app_name = #{appName,jdbcType=VARCHAR}
+           AND path = #{path,jdbcType=VARCHAR}
+    </select>
+
     <select id="findByServiceNameAndMethod" resultMap="BaseResultMap">
         SElECT
                 <include refid="Base_Column_List"/>

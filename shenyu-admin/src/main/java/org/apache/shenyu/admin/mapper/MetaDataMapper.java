@@ -73,6 +73,15 @@ public interface MetaDataMapper extends ExistProvider {
     MetaDataDO findByPath(String path);
     
     /**
+     * Find meta data do by app name and path.
+     *
+     * @param appName the app name
+     * @param path    the path
+     * @return the meta data do
+     */
+    MetaDataDO findByAppNameAndPath(String appName, String path);
+    
+    /**
      * Find by service name and method meta data do.
      *
      * @param serviceName the service name

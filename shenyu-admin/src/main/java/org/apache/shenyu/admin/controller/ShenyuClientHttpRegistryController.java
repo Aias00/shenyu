@@ -20,10 +20,13 @@ package org.apache.shenyu.admin.controller;
 import jakarta.annotation.Resource;
 import org.apache.shenyu.admin.register.ShenyuClientServerRegisterPublisher;
 import org.apache.shenyu.admin.utils.ShenyuResultMessage;
+import org.apache.shenyu.common.utils.JsonUtils;
 import org.apache.shenyu.register.common.dto.ApiDocRegisterDTO;
 import org.apache.shenyu.register.common.dto.DiscoveryConfigRegisterDTO;
 import org.apache.shenyu.register.common.dto.MetaDataRegisterDTO;
 import org.apache.shenyu.register.common.dto.URIRegisterDTO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,6 +39,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/shenyu-client")
 public class ShenyuClientHttpRegistryController {
+    
+    private static final Logger LOG = LoggerFactory.getLogger(ShenyuClientHttpRegistryController.class);
 
     @Resource
     private ShenyuClientServerRegisterPublisher publisher;
@@ -50,6 +55,7 @@ public class ShenyuClientHttpRegistryController {
     @PostMapping("/register-metadata")
     @ResponseBody
     public String registerMetadata(@RequestBody final MetaDataRegisterDTO metaDataRegisterDTO) {
+        LOG.info("register metadata:{}", JsonUtils.toJson(metaDataRegisterDTO));
         publisher.publish(metaDataRegisterDTO);
         return ShenyuResultMessage.SUCCESS;
     }
@@ -63,6 +69,7 @@ public class ShenyuClientHttpRegistryController {
     @PostMapping("/register-uri")
     @ResponseBody
     public String registerURI(@RequestBody final URIRegisterDTO uriRegisterDTO) {
+        LOG.info("register uri:{}", JsonUtils.toJson(uriRegisterDTO));
         publisher.publish(uriRegisterDTO);
         return ShenyuResultMessage.SUCCESS;
     }

@@ -180,7 +180,12 @@ public class MetaDataServiceImpl implements MetaDataService {
     public MetaDataDO findByPath(final String path) {
         return metaDataMapper.findByPath(path);
     }
-
+    
+    @Override
+    public MetaDataDO findByAppNameAndPath(final String appName, final String path) {
+        return metaDataMapper.findByAppNameAndPath(appName, path);
+    }
+    
     @Override
     public MetaDataDO findByServiceNameAndMethodName(final String serviceName, final String methodName) {
         final List<MetaDataDO> metadataList = metaDataMapper.findByServiceNameAndMethod(serviceName, methodName);

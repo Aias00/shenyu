@@ -126,6 +126,15 @@ public interface MetaDataService {
     MetaDataDO findByPath(String path);
 
     /**
+     * find meta data by appName and path.
+     *
+     * @param appName the name of application
+     * @param path the path of meta data
+     * @return {@link MetaDataDO}
+     */
+    MetaDataDO findByAppNameAndPath(String appName, String path);
+
+    /**
      * find meta data by service's name and method's name.
      *
      * @param serviceName the name of service
