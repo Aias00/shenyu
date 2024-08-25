@@ -29,6 +29,7 @@ shenyu:
   client:
     http:
       props:
+        host: namenode
         contextPath: /http
         appName: http
   #          port: 8189
