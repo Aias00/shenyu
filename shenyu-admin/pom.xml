@@ -353,7 +353,12 @@
             <version>${project.version}</version>
         </dependency>
         <!-- shenyu-admin-listener end-->
-    
+        
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>native-image-support</artifactId>
+            <version>0.9.0</version>
+        </dependency>
     </dependencies>
 
     <profiles>
@@ -401,6 +406,7 @@
                             </execution>
                         </executions>
                         <configuration>
+                            <mainClass>org.apache.shenyu.admin.ShenyuAdminBootstrap</mainClass>
                             <buildArgs>
                                 --no-fallback
                                 --initialize-at-build-time=org.apache.commons.logging.LogFactory
