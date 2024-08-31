@@ -34,6 +34,11 @@ public class WebsocketConfig {
     private String allowOrigin;
 
     /**
+     * checkInterval.
+     */
+    private Integer checkInterval = 120;
+
+    /**
      * get urls.
      *
      * @return urls
@@ -66,7 +71,23 @@ public class WebsocketConfig {
     public void setAllowOrigin(final String allowOrigin) {
         this.allowOrigin = allowOrigin;
     }
-
+    
+    /**
+     * get checkInterval.
+     * @return checkInterval checkInterval
+     */
+    public Integer getCheckInterval() {
+        return checkInterval;
+    }
+    
+    /**
+     * set checkInterval.
+     * @param checkInterval checkInterval
+     */
+    public void setCheckInterval(final Integer checkInterval) {
+        this.checkInterval = checkInterval;
+    }
+    
     @Override
     public boolean equals(final Object o) {
         if (this == o) {

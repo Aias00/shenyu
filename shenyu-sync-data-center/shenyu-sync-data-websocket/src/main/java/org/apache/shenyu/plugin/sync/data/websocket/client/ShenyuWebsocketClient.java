@@ -63,9 +63,7 @@ public final class ShenyuWebsocketClient extends WebSocketClient {
     
     private TimerTask timerTask;
     
-    private String runningMode;
-    
-    private String masterUrl;
+    private String adminRunningMode;
     
     private volatile boolean isConnectedToMaster;
     
@@ -156,16 +154,15 @@ public final class ShenyuWebsocketClient extends WebSocketClient {
             LOG.debug("onMessage server[{}] result({})", this.getURI().toString(), result);
         }
         
-        Map<String, Object> jsonToMap = JsonUtils.jsonToMap(result);
-        Object eventType = jsonToMap.get(RunningModeConstants.EVENT_TYPE);
+        Map<String, Object> msgJsonMap = JsonUtils.jsonToMap(result);
+        Object eventType = msgJsonMap.get(RunningModeConstants.EVENT_TYPE);
         if (Objects.equals(DataEventTypeEnum.RUNNING_MODE.name(), eventType)) {
-            LOG.info("server[{}] handle running mode result({})", this.getURI().toString(), result);
-            this.runningMode = String.valueOf(jsonToMap.get(RunningModeConstants.RUNNING_MODE));
-            if (Objects.equals(RunningModeEnum.STANDALONE.name(), runningMode)) {
+            LOG.info("server[{}] handle admin running mode result({})", this.getURI().toString(), result);
+            this.adminRunningMode = String.valueOf(msgJsonMap.get(RunningModeConstants.RUNNING_MODE));
+            if (Objects.equals(RunningModeEnum.STANDALONE.name(), adminRunningMode)) {
                 return;
             }
-            this.masterUrl = String.valueOf(jsonToMap.get(RunningModeConstants.MASTER_URL));
-            this.isConnectedToMaster = Boolean.TRUE.equals(jsonToMap.get(RunningModeConstants.IS_MASTER));
+            this.isConnectedToMaster = Boolean.TRUE.equals(msgJsonMap.get(RunningModeConstants.IS_MASTER));
         } else {
             handleResult(result);
         }
@@ -206,7 +203,6 @@ public final class ShenyuWebsocketClient extends WebSocketClient {
                 this.reconnectBlocking();
             } else {
                 this.sendPing();
-//                send(DataEventTypeEnum.RUNNING_MODE.name());
                 LOG.debug("websocket send to [{}] ping message successful", this.getURI());
             }
         } catch (Exception e) {
@@ -220,7 +216,7 @@ public final class ShenyuWebsocketClient extends WebSocketClient {
      * @param result result
      */
     private void handleResult(final String result) {
-        LOG.info("server [{}] handleResult({})", this.getURI().toString(), result);
+        LOG.info("server [{}] handleResult [{}]", this.getURI().toString(), result);
         WebsocketData<?> websocketData = GsonUtils.getInstance().fromJson(result, WebsocketData.class);
         ConfigGroupEnum groupEnum = ConfigGroupEnum.acquireByName(websocketData.getGroupType());
         String eventType = websocketData.getEventType();
@@ -229,21 +225,12 @@ public final class ShenyuWebsocketClient extends WebSocketClient {
     }
     
     /**
-     * Gets the master url.
-     *
-     * @return the master url
-     */
-    public String getMasterUrl() {
-        return masterUrl;
-    }
-    
-    /**
      * Gets the running mode.
      *
      * @return the running mode
      */
-    public String getRunningMode() {
-        return runningMode;
+    public String getAdminRunningMode() {
+        return adminRunningMode;
     }
     
     /**

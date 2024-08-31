@@ -99,8 +99,25 @@ public class WebsocketSyncDataService implements SyncDataService {
         this.authDataSubscribers = authDataSubscribers;
         this.proxySelectorDataSubscribers = proxySelectorDataSubscribers;
         this.discoveryUpstreamDataSubscribers = discoveryUpstreamDataSubscribers;
-        LOG.info("start init connecting...");
+        
+        initWebSocketClients();
+        
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("starting cluster master check task...");
+        }
+        this.timer.add(timerTask = new AbstractRoundTask(null, TimeUnit.SECONDS.toMillis(websocketConfig.getCheckInterval())) {
+            @Override
+            public void doRun(final String key, final TimerTask timerTask) {
+                clusterMasterCheck();
+            }
+        });
+    }
+    
+    private void initWebSocketClients() {
         List<String> urls = websocketConfig.getUrls();
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("starting init websocket connection, urls: {}", urls);
+        }
         for (String url : urls) {
             if (StringUtils.isNotEmpty(websocketConfig.getAllowOrigin())) {
                 Map<String, String> headers = ImmutableMap.of(ORIGIN_HEADER_NAME, websocketConfig.getAllowOrigin());
@@ -111,33 +128,20 @@ public class WebsocketSyncDataService implements SyncDataService {
                         metaDataSubscribers, authDataSubscribers, proxySelectorDataSubscribers, discoveryUpstreamDataSubscribers));
             }
         }
-        LOG.info("start check task...");
-        this.timer.add(timerTask = new AbstractRoundTask(null, TimeUnit.SECONDS.toMillis(60)) {
-            @Override
-            public void doRun(final String key, final TimerTask timerTask) {
-                masterCheck();
-            }
-        });
     }
     
-    private void masterCheck() {
+    private void clusterMasterCheck() {
         if (LOG.isDebugEnabled()) {
             LOG.debug("master checking task start...");
         }
+        // whether clients are empty
         if (CollectionUtils.isEmpty(clients)) {
-            List<String> urls = websocketConfig.getUrls();
-            for (String url : urls) {
-                if (StringUtils.isNotEmpty(websocketConfig.getAllowOrigin())) {
-                    Map<String, String> headers = ImmutableMap.of(ORIGIN_HEADER_NAME, websocketConfig.getAllowOrigin());
-                    clients.add(new ShenyuWebsocketClient(URI.create(url), headers, Objects.requireNonNull(pluginDataSubscriber), metaDataSubscribers,
-                            authDataSubscribers, proxySelectorDataSubscribers, discoveryUpstreamDataSubscribers));
-                } else {
-                    clients.add(new ShenyuWebsocketClient(URI.create(url), Objects.requireNonNull(pluginDataSubscriber),
-                            metaDataSubscribers, authDataSubscribers, proxySelectorDataSubscribers, discoveryUpstreamDataSubscribers));
-                }
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("clients is empty, starting init websocket connection...");
             }
+            initWebSocketClients();
         }
-//        String masterUrl = "";
+        
         Iterator<ShenyuWebsocketClient> iterator = clients.iterator();
         while (iterator.hasNext()) {
             ShenyuWebsocketClient websocketClient = iterator.next();
@@ -145,15 +149,24 @@ public class WebsocketSyncDataService implements SyncDataService {
                 iterator.remove();
                 continue;
             }
-            String runningMode = websocketClient.getRunningMode();
-            // check running mode
-            if (Objects.equals(runningMode, RunningModeEnum.STANDALONE.name())) {
-                LOG.info("admin running in standalone mode...");
+            String masterRunningMode = websocketClient.getAdminRunningMode();
+            // check master running mode
+            if (Objects.equals(masterRunningMode, RunningModeEnum.STANDALONE.name())) {
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("admin running in standalone mode, cancel the master check task");
+                }
                 timerTask.cancel();
                 return;
             }
             
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("admin running in cluster mode, checking whether this client is connected to master ");
+            }
             if (!websocketClient.isConnectedToMaster()) {
+                
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("this client is not connected to master, shutting down the client and remove it from the client list");
+                }
                 websocketClient.nowClose();
                 iterator.remove();
             }
@@ -165,7 +178,7 @@ public class WebsocketSyncDataService implements SyncDataService {
         if (CollectionUtils.isNotEmpty(clients)) {
             for (ShenyuWebsocketClient client : clients) {
                 if (Objects.nonNull(client)) {
-                    client.close();
+                    client.nowClose();
                 }
             }
         }
