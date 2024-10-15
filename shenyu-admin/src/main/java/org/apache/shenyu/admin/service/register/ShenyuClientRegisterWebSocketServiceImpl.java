@@ -44,7 +44,7 @@ import org.apache.shenyu.register.common.dto.MetaDataRegisterDTO;
 import org.apache.shenyu.register.common.dto.URIRegisterDTO;
 import org.springframework.stereotype.Service;
 
-import static org.apache.shenyu.common.constant.AdminConstants.SYS_DEFAULT_NAMESPACE_ID;
+import static org.apache.shenyu.common.constant.Constants.SYS_DEFAULT_NAMESPACE_ID;
 
 /**
  * spring mvc websocket service register.
@@ -71,7 +71,7 @@ public class ShenyuClientRegisterWebSocketServiceImpl extends AbstractContextPat
     protected void registerMetadata(final MetaDataRegisterDTO dto) {
         if (dto.isRegisterMetaData()) {
             MetaDataService metaDataService = getMetaDataService();
-            MetaDataDO exist = metaDataService.findByPath(dto.getPath());
+            MetaDataDO exist = metaDataService.findByPathAndNamespaceId(dto.getPath(), dto.getNamespaceId());
             metaDataService.saveOrUpdateMetaData(exist, dto);
         }
     }
@@ -99,7 +99,7 @@ public class ShenyuClientRegisterWebSocketServiceImpl extends AbstractContextPat
 
     private List<WebSocketUpstream> buildWebSocketUpstreamList(final List<URIRegisterDTO> uriList) {
         return uriList.stream()
-                .map(dto -> CommonUpstreamUtils.buildWebSocketUpstream(dto.getProtocol(), dto.getHost(), dto.getPort()))
+                .map(dto -> CommonUpstreamUtils.buildWebSocketUpstream(dto.getProtocol(), dto.getHost(), dto.getPort(), dto.getNamespaceId()))
                 .collect(Collectors.toCollection(CopyOnWriteArrayList::new));
     }
 
@@ -117,10 +117,10 @@ public class ShenyuClientRegisterWebSocketServiceImpl extends AbstractContextPat
                 .collect(Collectors.toList());
         if (CollectionUtils.isNotEmpty(validOfflineUrl)) {
             for (URIRegisterDTO offlineUrl : validOfflineUrl) {
-                WebSocketUpstream webSocketUpstream = CommonUpstreamUtils.buildWebSocketUpstream(offlineUrl.getProtocol(), offlineUrl.getHost(), offlineUrl.getPort());
+                WebSocketUpstream webSocketUpstream = CommonUpstreamUtils.buildWebSocketUpstream(offlineUrl.getProtocol(), offlineUrl.getHost(), offlineUrl.getPort(), offlineUrl.getNamespaceId());
                 removeDiscoveryUpstream(selectorDO.getId(), webSocketUpstream.getUrl());
             }
-            DiscoverySyncData discoverySyncData = fetch(selectorDO.getId(), selectorDO.getName(), pluginName);
+            DiscoverySyncData discoverySyncData = fetch(selectorDO.getId(), selectorDO.getName(), pluginName, selectorDO.getNamespaceId());
             getEventPublisher().publishEvent(new DataChangedEvent(ConfigGroupEnum.DISCOVER_UPSTREAM, DataEventTypeEnum.UPDATE, Collections.singletonList(discoverySyncData)));
         }
         return Constants.SUCCESS;

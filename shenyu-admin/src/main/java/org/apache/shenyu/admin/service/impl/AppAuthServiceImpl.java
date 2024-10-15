@@ -103,7 +103,7 @@ public class AppAuthServiceImpl implements AppAuthService {
     @Transactional(rollbackFor = Exception.class)
     public ShenyuAdminResult applyCreate(final AuthApplyDTO authApplyDTO) {
         if (StringUtils.isBlank(authApplyDTO.getAppName())
-                || (authApplyDTO.getOpen() && CollectionUtils.isEmpty(authApplyDTO.getPathList()))) {
+                || authApplyDTO.getOpen() && CollectionUtils.isEmpty(authApplyDTO.getPathList())) {
             return ShenyuAdminResult.error(ShenyuResultMessage.PARAMETER_ERROR);
         }
         AppAuthDO appAuthDO = AppAuthDO.create(authApplyDTO);
@@ -117,6 +117,7 @@ public class AppAuthServiceImpl implements AppAuthService {
                 .appSecret(appAuthDO.getAppSecret())
                 .open(appAuthDO.getOpen())
                 .enabled(appAuthDO.getEnabled())
+                .namespaceId(appAuthDO.getNamespaceId())
                 .paramDataList(Lists.newArrayList(new AuthParamData(authParamDO.getAppName(), authParamDO.getAppParam())))
                 .build();
 
@@ -141,7 +142,7 @@ public class AppAuthServiceImpl implements AppAuthService {
     @Override
     public ShenyuAdminResult applyUpdate(final AuthApplyDTO authApplyDTO) {
         if (StringUtils.isAnyBlank(authApplyDTO.getAppKey(), authApplyDTO.getAppName())
-                || (authApplyDTO.getOpen() && CollectionUtils.isEmpty(authApplyDTO.getPathList()))) {
+                || authApplyDTO.getOpen() && CollectionUtils.isEmpty(authApplyDTO.getPathList())) {
             return ShenyuAdminResult.error(ShenyuResultMessage.PARAMETER_ERROR);
         }
         AppAuthDO appAuthDO = appAuthMapper.findByAppKey(authApplyDTO.getAppKey());
@@ -546,6 +547,7 @@ public class AppAuthServiceImpl implements AppAuthService {
                 .appSecret(appAuthDO.getAppSecret())
                 .open(appAuthDO.getOpen())
                 .enabled(appAuthDO.getEnabled())
+                .namespaceId(appAuthDO.getNamespaceId())
                 .build();
         List<AuthParamDO> authParamDOList = authParamMapper.findByAuthId(appAuthDO.getId());
         if (CollectionUtils.isNotEmpty(authParamDOList)) {
@@ -571,6 +573,7 @@ public class AppAuthServiceImpl implements AppAuthService {
                 .appSecret(appAuthDO.getAppSecret())
                 .open(appAuthDO.getOpen())
                 .enabled(appAuthDO.getEnabled())
+                .namespaceId(appAuthDO.getNamespaceId())
                 .build();
         if (CollectionUtils.isNotEmpty(authParamDataList)) {
             data.setParamDataList(authParamDataList);
