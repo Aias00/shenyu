@@ -591,6 +591,62 @@
                 </resources>
             </build>
         </profile>
+        <profile>
+            <id>native</id>
+            <build>
+                <plugins>
+                    <!--                    <plugin>-->
+                    <!--                        <groupId>org.springframework.boot</groupId>-->
+                    <!--                        <artifactId>spring-boot-maven-plugin</artifactId>-->
+                    <!--                        <executions>-->
+                    <!--                            <execution>-->
+                    <!--                                <goals>-->
+                    <!--                                    <goal>repackage</goal>-->
+                    <!--                                </goals>-->
+                    <!--                            </execution>-->
+                    <!--                        </executions>-->
+                    <!--                    </plugin>-->
+                    <plugin>
+                        <groupId>org.graalvm.buildtools</groupId>
+                        <artifactId>native-maven-plugin</artifactId>
+                        <version>0.10.2</version>
+                        <extensions>true</extensions>
+                        <executions>
+                            <execution>
+                                <id>build-native</id>
+                                <goals>
+                                    <goal>compile-no-fork</goal>
+                                </goals>
+                                <phase>package</phase>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <mainClass>org.apache.shenyu.bootstrap.ShenyuBootstrapApplication</mainClass>
+                            <buildArgs>
+                                --no-fallback
+                                --initialize-at-build-time=org.apache.commons.logging.LogFactory
+                                --initialize-at-build-time=org.apache.commons.logging.LogFactoryService
+                                --initialize-at-build-time=org.slf4j.MDC
+                                --initialize-at-build-time=ch.qos.logback.classic.Level
+                                --initialize-at-build-time=ch.qos.logback.classic.Logger
+                                --initialize-at-build-time=ch.qos.logback.core.util.StatusPrinter
+                                --initialize-at-build-time=ch.qos.logback.core.status.StatusBase
+                                --initialize-at-build-time=ch.qos.logback.core.status.InfoStatus
+                                --initialize-at-build-time=ch.qos.logback.core.spi.AppenderAttachableImpl
+                                --initialize-at-build-time=org.slf4j.LoggerFactory
+                                --initialize-at-build-time=ch.qos.logback.core.util.Loader
+                                --initialize-at-build-time=org.slf4j.impl.StaticLoggerBinder
+                                --initialize-at-build-time=ch.qos.logback.classic.spi.ThrowableProxy
+                                --initialize-at-build-time=ch.qos.logback.core.CoreConstants
+                                --report-unsupported-elements-at-runtime
+                                --allow-incomplete-classpath
+                                -H:+ReportExceptionStackTraces
+                            </buildArgs>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
     <build>
         <finalName>shenyu-bootstrap</finalName>
