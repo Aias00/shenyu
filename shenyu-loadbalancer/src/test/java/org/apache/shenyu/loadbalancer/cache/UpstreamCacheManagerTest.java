@@ -31,6 +31,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The type UpstreamCacheManager check task test.
@@ -457,6 +459,110 @@ public class UpstreamCacheManagerTest {
                 manager.removeByKey(selectorId);
             }
         }
+    }
+
+    @Test
+    public void routingSnapshotSurvivesRemovalAndReaddition() throws Exception {
+        UpstreamCacheManager manager = UpstreamCacheManager.getInstance();
+        String selectorId = "ROUTING_SNAPSHOT_LIFECYCLE";
+        Upstream first = Upstream.builder().url("first:8080").healthCheckEnabled(false).build();
+        Upstream second = Upstream.builder().url("second:8080").healthCheckEnabled(false).build();
+        try {
+            manager.submit(selectorId, List.of(first));
+            List<Upstream> captured = readRoutingSnapshot(manager, selectorId);
+            UpstreamCheckTask task = getUpstreamCheckTask(manager);
+            CompletableFuture.runAsync(() -> {
+                task.triggerRemoveOne(selectorId, first);
+                task.triggerAddOne(selectorId, second);
+            }).get(5, TimeUnit.SECONDS);
+            Assertions.assertEquals(List.of(first), captured);
+            Assertions.assertSame(first, captured.get(0));
+            Assertions.assertEquals(List.of(second), readRoutingSnapshot(manager, selectorId));
+            manager.removeByKey(selectorId);
+            Assertions.assertNull(readRoutingSnapshot(manager, selectorId));
+            manager.submit(selectorId, List.of(first));
+            Assertions.assertEquals(List.of(first), readRoutingSnapshot(manager, selectorId));
+        } finally {
+            manager.removeByKey(selectorId);
+        }
+    }
+
+    @Test
+    public void legacyMutableCopyCannotChangePublishedMembership() {
+        UpstreamCacheManager manager = UpstreamCacheManager.getInstance();
+        String selectorId = "ROUTING_SNAPSHOT_MUTABLE_COPY";
+        Upstream upstream = Upstream.builder().url("copy:8080").healthCheckEnabled(false).build();
+        try {
+            manager.submit(selectorId, List.of(upstream));
+            List<Upstream> snapshot = readRoutingSnapshot(manager, selectorId);
+            manager.findUpstreamListBySelectorId(selectorId).clear();
+            Assertions.assertEquals(List.of(upstream), snapshot);
+            Assertions.assertEquals(List.of(upstream), readRoutingSnapshot(manager, selectorId));
+            getUpstreamCheckTask(manager).triggerRemoveOne(selectorId, upstream);
+            Assertions.assertTrue(readRoutingSnapshot(manager, selectorId).isEmpty());
+            Assertions.assertEquals(List.of(upstream), snapshot);
+        } finally {
+            manager.removeByKey(selectorId);
+        }
+    }
+
+    @Test
+    public void publishedSnapshotChangesOnlyWithHealthyMembership() {
+        UpstreamCacheManager manager = UpstreamCacheManager.getInstance();
+        String selectorId = "ROUTING_SNAPSHOT_PUBLICATION";
+        Upstream first = Upstream.builder().url("first:8080").healthCheckEnabled(false).build();
+        Upstream second = Upstream.builder().url("second:8080").healthCheckEnabled(false).build();
+        UpstreamCheckTask task = getUpstreamCheckTask(manager);
+        try {
+            manager.submit(selectorId, List.of(first));
+            List<Upstream> initial = readRoutingSnapshot(manager, selectorId);
+            Assertions.assertThrows(UnsupportedOperationException.class, initial::clear);
+            task.triggerAddOne(selectorId, first);
+            task.triggerRemoveOne(selectorId, second);
+            Assertions.assertSame(initial, readRoutingSnapshot(manager, selectorId));
+            first.setWeight(37);
+            Assertions.assertEquals(37, initial.get(0).getWeight());
+            task.triggerAddOne(selectorId, second);
+            List<Upstream> both = readRoutingSnapshot(manager, selectorId);
+            Assertions.assertEquals(List.of(first, second), both);
+            Assertions.assertEquals(List.of(first), initial);
+            Assertions.assertSame(first, both.get(0));
+            task.putToMap(task.getUnhealthyUpstream(), selectorId, first);
+            task.removeFromMap(task.getHealthyUpstream(), selectorId, first);
+            Assertions.assertEquals(List.of(second), readRoutingSnapshot(manager, selectorId));
+            Assertions.assertEquals(List.of(first, second), both);
+            task.removeFromMap(task.getUnhealthyUpstream(), selectorId, first);
+            task.putToMap(task.getHealthyUpstream(), selectorId, first);
+            Assertions.assertEquals(List.of(second, first), readRoutingSnapshot(manager, selectorId));
+        } finally {
+            manager.removeByKey(selectorId);
+        }
+    }
+
+    @Test
+    public void concurrentMembershipWritersPublishBothAdditions() throws Exception {
+        UpstreamCacheManager manager = UpstreamCacheManager.getInstance();
+        String selectorId = "ROUTING_SNAPSHOT_CONCURRENT_WRITERS";
+        Upstream first = Upstream.builder().url("first:8080").healthCheckEnabled(false).build();
+        Upstream second = Upstream.builder().url("second:8080").healthCheckEnabled(false).build();
+        UpstreamCheckTask task = getUpstreamCheckTask(manager);
+        try {
+            CompletableFuture.allOf(CompletableFuture.runAsync(() -> task.triggerAddOne(selectorId, first)),
+                    CompletableFuture.runAsync(() -> task.triggerAddOne(selectorId, second))).get(5, TimeUnit.SECONDS);
+            List<Upstream> snapshot = readRoutingSnapshot(manager, selectorId);
+            Assertions.assertEquals(2, snapshot.size());
+            Assertions.assertTrue(snapshot.containsAll(List.of(first, second)));
+            CompletableFuture.allOf(CompletableFuture.runAsync(() -> task.triggerRemoveOne(selectorId, first)),
+                    CompletableFuture.runAsync(() -> task.triggerRemoveOne(selectorId, second))).get(5, TimeUnit.SECONDS);
+            Assertions.assertEquals(2, snapshot.size());
+            Assertions.assertTrue(readRoutingSnapshot(manager, selectorId).isEmpty());
+        } finally {
+            manager.removeByKey(selectorId);
+        }
+    }
+
+    private List<Upstream> readRoutingSnapshot(final UpstreamCacheManager manager, final String selectorId) {
+        return manager.findUpstreamSnapshotBySelectorId(selectorId);
     }
 
     /**

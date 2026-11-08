@@ -54,6 +54,8 @@ public final class UpstreamCheckTask implements Runnable {
 
     private final Map<String, List<Upstream>> healthyUpstream = Maps.newConcurrentMap();
 
+    private final Map<String, List<Upstream>> healthyUpstreamSnapshots = Maps.newConcurrentMap();
+
     private final Map<String, List<Upstream>> unhealthyUpstream = Maps.newConcurrentMap();
 
     private final Object lock = new Object();
@@ -392,6 +394,9 @@ public final class UpstreamCheckTask implements Runnable {
             List<Upstream> list = MapUtils.computeIfAbsent(map, selectorId, k -> new CopyOnWriteArrayList<>());
             if (!list.contains(upstream)) {
                 list.add(upstream);
+                if (map == healthyUpstream) {
+                    healthyUpstreamSnapshots.put(selectorId, List.copyOf(list));
+                }
             }
         }
     }
@@ -407,7 +412,9 @@ public final class UpstreamCheckTask implements Runnable {
         synchronized (lock) {
             List<Upstream> list = map.get(selectorId);
             if (CollectionUtils.isNotEmpty(list)) {
-                list.remove(upstream);
+                if (list.remove(upstream) && map == healthyUpstream) {
+                    healthyUpstreamSnapshots.put(selectorId, List.copyOf(list));
+                }
             }
         }
     }
@@ -420,6 +427,7 @@ public final class UpstreamCheckTask implements Runnable {
     public void triggerRemoveAll(final String selectorId) {
         synchronized (lock) {
             healthyUpstream.remove(selectorId);
+            healthyUpstreamSnapshots.remove(selectorId);
             unhealthyUpstream.remove(selectorId);
         }
     }
@@ -466,6 +474,19 @@ public final class UpstreamCheckTask implements Runnable {
      */
     public List<Upstream> getHealthyUpstreamListBySelectorId(final String selectorId) {
         return getHealthyUpstream().get(selectorId);
+    }
+
+    /**
+     * Get the stable healthy membership published by the last membership change.
+     *
+     * <p>The list is immutable; upstream objects retain their shared weights and
+     * load-balancing statistics. Publication and removal use the health writer lock.
+     *
+     * @param selectorId the selector id
+     * @return the immutable membership snapshot, or null if the selector is absent
+     */
+    public List<Upstream> getHealthyUpstreamSnapshot(final String selectorId) {
+        return healthyUpstreamSnapshots.get(selectorId);
     }
     
     /**

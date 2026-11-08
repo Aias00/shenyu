@@ -101,30 +101,53 @@ public abstract class AbstractHttpClientPlugin<R> implements ShenyuPlugin {
         final Flux<DataBuffer> requestBody = (retryTimes > 0 && isRequestBodyRequired(httpMethod))
                 ? getCachedRequestBody(exchange)
                 : exchange.getRequest().getBody();
-        final Mono<R> response = doRequest(exchange, httpMethod, uri, requestBody)
-                .timeout(duration, Mono.error(() -> new TimeoutException("Response took longer than timeout: " + duration)))
-                .doOnError(e -> LOG.error(e.getMessage(), e));
-        RetryStrategy<R> strategy;
+        Mono<R> response = doRequest(exchange, httpMethod, uri, requestBody);
         String retryStrategyType = (String) Optional.ofNullable(exchange.getAttribute(Constants.HTTP_RETRY_BACK_OFF_SPEC)).orElse(HttpRetryBackoffSpecEnum.getDefault());
         HttpRetryBackoffSpecEnum spec = HttpRetryBackoffSpecEnum.acquireByName(retryStrategyType);
-        switch (spec) {
-            case EXPONENTIAL_BACKOFF:
-                strategy = new ExponentialRetryBackoffStrategy<>(this);
-                break;
-            case FIXED_BACKOFF:
-                strategy = new FixedRetryStrategy<>(this);
-                break;
-            default:
-                strategy = new DefaultRetryStrategy<>(this);
+        if (retryTimes == 0) {
+            response = executeWithoutRetry(response, duration, spec, retryStrategy);
+        } else {
+            response = response.timeout(duration, Mono.error(() -> new TimeoutException("Response took longer than timeout: " + duration)))
+                    .doOnError(e -> LOG.error(e.getMessage(), e));
+            RetryStrategy<R> strategy;
+            switch (spec) {
+                case EXPONENTIAL_BACKOFF:
+                    strategy = new ExponentialRetryBackoffStrategy<>(this);
+                    break;
+                case FIXED_BACKOFF:
+                    strategy = new FixedRetryStrategy<>(this);
+                    break;
+                default:
+                    strategy = new DefaultRetryStrategy<>(this);
+            }
+            response = strategy.execute(response, exchange, duration, retryTimes);
         }
-        Mono<R> retriedResponse = strategy.execute(response, exchange, duration, retryTimes);
-        return retriedResponse
+        return response
                 .onErrorMap(ShenyuException.class, th -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                         ShenyuResultEnum.CANNOT_FIND_HEALTHY_UPSTREAM_URL_AFTER_FAILOVER.getMsg(), th))
                 .onErrorMap(java.util.concurrent.TimeoutException.class, th -> new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, th.getMessage(), th))
                 .onErrorMap(DataBufferLimitException.class, th -> new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE,
                         "Request body exceeds the maxInMemorySize limit and cannot be cached for retry", th))
                 .flatMap((Function<Object, Mono<? extends Void>>) o -> chain.execute(exchange));
+    }
+
+    private Mono<R> executeWithoutRetry(final Mono<R> response, final Duration duration,
+                                       final HttpRetryBackoffSpecEnum spec, final String retryStrategy) {
+        Mono<R> result = response;
+        boolean defaultCurrent = spec == HttpRetryBackoffSpecEnum.DEFAULT_BACKOFF && RetryEnum.CURRENT.getName().equals(retryStrategy);
+        boolean defaultFailover = spec == HttpRetryBackoffSpecEnum.DEFAULT_BACKOFF && !defaultCurrent;
+        if (defaultCurrent) {
+            result = result.onErrorMap(DefaultRetryStrategy::mapZeroRetryError);
+        } else if (defaultFailover || spec == HttpRetryBackoffSpecEnum.FIXED_BACKOFF && RetryEnum.FAILOVER.getName().equals(retryStrategy)) {
+            result = result.onErrorMap(ShenyuException.class, th -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "CANNOT_FIND_HEALTHY_UPSTREAM_URL_AFTER_FAILOVER", th));
+        }
+        // The sequence timeout is subscribed before the attempt timeout, with the same
+        // deadline when retry=0. Keep that deadline outside source-error mapping so an
+        // elapsed request maps to 504, while default/current source failures retain 408.
+        String timeoutMessage = defaultFailover ? "Response took longer than timeout: " : "Retry sequence took longer than timeout: ";
+        return result.timeout(duration, Mono.error(() -> new TimeoutException(timeoutMessage + duration)))
+                .doOnError(e -> LOG.error(e.getMessage(), e));
     }
 
     /**

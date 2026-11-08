@@ -71,7 +71,7 @@ class CircuitBreakerCandidatesTest {
             expected.remove(blocked);
             List<Upstream> snapshot = new ArrayList<>(configured);
             CircuitBreakerCandidates candidates = CircuitBreakerCandidates.filter(SELECTOR, snapshot);
-            assertSame(snapshot, candidates.getUpstreams());
+            assertEquals(configured, snapshot);
             assertEquals(expected, candidates.getUpstreams());
             for (int index = 0; index < expected.size(); index++) {
                 assertSame(expected.get(index), candidates.getUpstreams().get(index));
@@ -135,14 +135,14 @@ class CircuitBreakerCandidatesTest {
         UpstreamCacheManager cache = UpstreamCacheManager.getInstance();
         try {
             cache.submit(SELECTOR, List.of(target));
-            CircuitBreakerCandidates candidates = CircuitBreakerCandidates.filter(SELECTOR, cache.findUpstreamListBySelectorId(SELECTOR));
+            CircuitBreakerCandidates candidates = CircuitBreakerCandidates.filter(SELECTOR, cache.findUpstreamSnapshotBySelectorId(SELECTOR));
             CompletableFuture.runAsync(() -> cache.removeByKey(SELECTOR)).get(5, TimeUnit.SECONDS);
-            assertNull(cache.findUpstreamListBySelectorId(SELECTOR));
+            assertNull(cache.findUpstreamSnapshotBySelectorId(SELECTOR));
             assertSame(target, candidates.getUpstreams().get(0));
             assertEquals(SELECTOR + ":http://removed", candidates.getBreakerKey(target));
             Upstream replacement = Upstream.builder().protocol("https://").url("new").healthCheckEnabled(false).build();
             cache.submit(SELECTOR, List.of(replacement));
-            CircuitBreakerCandidates updated = CircuitBreakerCandidates.filter(SELECTOR, cache.findUpstreamListBySelectorId(SELECTOR));
+            CircuitBreakerCandidates updated = CircuitBreakerCandidates.filter(SELECTOR, cache.findUpstreamSnapshotBySelectorId(SELECTOR));
             assertEquals(List.of(replacement), updated.getUpstreams());
             assertEquals(SELECTOR + ":https://new", updated.getBreakerKey(replacement));
         } finally {
@@ -180,7 +180,7 @@ class CircuitBreakerCandidatesTest {
                     assertTrue(start.await(5, TimeUnit.SECONDS));
                     try (MockedStatic<UpstreamCircuitBreaker> mocked = mockStatic(UpstreamCircuitBreaker.class, CALLS_REAL_METHODS)) {
                         mocked.when(UpstreamCircuitBreaker::getInstance).thenReturn(breaker);
-                        return CircuitBreakerCandidates.filter(SELECTOR, new ArrayList<>(List.of(target))).getUpstreams().size();
+                        return CircuitBreakerCandidates.filter(SELECTOR, List.of(target)).getUpstreams().size();
                     }
                 }));
             }
@@ -230,6 +230,54 @@ class CircuitBreakerCandidatesTest {
             int after = concurrentAdmissions(() -> CircuitBreakerCandidates.filter(SELECTOR, new ArrayList<>(List.of(target))).getUpstreams());
             assertEquals(before, after);
             assertEquals(halfOpen ? 0 : 1, after);
+        }
+    }
+
+    @Test
+    void immutableMembershipSupportsFilteredCandidatesAndIndependentMutations() {
+        Upstream first = upstream("snapshot-first", 1);
+        Upstream second = upstream("snapshot-second", 2);
+        Upstream third = upstream("snapshot-third", 3);
+        List<Upstream> snapshot = List.of(first, second, third);
+        for (boolean blocked : List.of(false, true)) {
+            if (blocked) {
+                open(key(SELECTOR, second));
+            }
+            List<Upstream> expected = blocked ? List.of(first, third) : snapshot;
+            CircuitBreakerCandidates candidates = CircuitBreakerCandidates.filter(SELECTOR, snapshot);
+            assertEquals(expected, candidates.getUpstreams());
+            assertEquals(List.of(first, second, third), snapshot);
+            for (Upstream target : expected) {
+                assertEquals(key(SELECTOR, target), candidates.getBreakerKey(target));
+            }
+            // SPI implementations may sort, remove or append to their candidate list.
+            List<Upstream> mutable = candidates.getUpstreams();
+            Collections.reverse(mutable);
+            mutable.subList(0, 1).clear();
+            mutable.add(first);
+            mutable.remove(first);
+            mutable.clear();
+            assertTrue(mutable.isEmpty());
+            assertEquals(List.of(first, second, third), snapshot);
+            assertEquals(expected, CircuitBreakerCandidates.filter(SELECTOR, snapshot).getUpstreams());
+        }
+    }
+
+    @Test
+    void recoveryProbeDoesNotChangeSharedMembership() {
+        Upstream first = upstream("probe-first", 1);
+        Upstream second = upstream("probe-second", 2);
+        List<Upstream> snapshot = List.of(first, second);
+        UpstreamCircuitBreaker breaker = strictBreaker();
+        breaker.recordFailure(key(SELECTOR, second));
+        try (MockedStatic<UpstreamCircuitBreaker> mocked = mockStatic(UpstreamCircuitBreaker.class, CALLS_REAL_METHODS)) {
+            mocked.when(UpstreamCircuitBreaker::getInstance).thenReturn(breaker);
+            CircuitBreakerCandidates probe = CircuitBreakerCandidates.filter(SELECTOR, snapshot);
+            assertTrue(probe.isProbe());
+            assertEquals(List.of(second), probe.getUpstreams());
+            assertEquals(List.of(first, second), snapshot);
+            assertEquals(List.of(first), CircuitBreakerCandidates.filter(SELECTOR, snapshot).getUpstreams());
+            assertEquals(SELECTOR + ":http://probe-second", probe.getBreakerKey(second));
         }
     }
 

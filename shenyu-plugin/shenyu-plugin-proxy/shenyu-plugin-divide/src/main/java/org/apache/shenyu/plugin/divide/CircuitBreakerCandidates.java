@@ -22,14 +22,17 @@ import org.apache.shenyu.plugin.base.circuitbreaker.UpstreamCircuitBreaker;
 import org.apache.shenyu.plugin.base.circuitbreaker.UpstreamCircuitBreaker.HalfOpenProbe;
 import reactor.core.publisher.Mono;
 
+import java.util.AbstractList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.RandomAccess;
 
 /**
  * Request-local candidates and their circuit-breaker keys.
  *
- * <p>The cache supplies a mutable list copy for each request. Compact that copy
- * in place, preserving upstream order, identity and load-balancing statistics.
+ * <p>The cache supplies immutable membership. Copy it only when filtering or a
+ * load balancer mutates the request's list, preserving order and upstream identity.
  * Keys are retained only for this request, so configuration changes need no
  * additional cache invalidation.
  */
@@ -51,10 +54,10 @@ final class CircuitBreakerCandidates {
     }
 
     /**
-     * Filter a request's upstream snapshot without allocating another upstream list.
+     * Filter a request's upstream snapshot, copying membership only on mutation.
      *
      * @param selectorId the selector id
-     * @param upstreams a mutable, request-owned copy from the upstream cache
+     * @param upstreams a stable membership snapshot from the upstream cache
      * @return candidates with the keys used to check their breaker state
      */
     static CircuitBreakerCandidates filter(final String selectorId, final List<Upstream> upstreams) {
@@ -65,11 +68,12 @@ final class CircuitBreakerCandidates {
      * Filter candidates while preferring an explicitly requested probe target.
      *
      * @param selectorId the selector id
-     * @param upstreams a mutable request-owned snapshot
+     * @param snapshot a stable membership snapshot
      * @param requested the explicit target, or null
      * @return ordinary candidates or exactly one acquired recovery probe
      */
-    static CircuitBreakerCandidates filter(final String selectorId, final List<Upstream> upstreams, final String requested) {
+    static CircuitBreakerCandidates filter(final String selectorId, final List<Upstream> snapshot, final String requested) {
+        List<Upstream> upstreams = new CandidateList(snapshot);
         UpstreamCircuitBreaker breaker = UpstreamCircuitBreaker.getInstance();
         int size = upstreams.size();
         String[] keys = new String[size];
@@ -169,5 +173,61 @@ final class CircuitBreakerCandidates {
             }
         }
         return UpstreamCircuitBreaker.buildKey(selectorId, upstream);
+    }
+
+    /**
+     * Keep shared membership stable while retaining mutable list semantics for SPI callers.
+     */
+    private static final class CandidateList extends AbstractList<Upstream> implements RandomAccess {
+
+        private List<Upstream> delegate;
+
+        private boolean copied;
+
+        private CandidateList(final List<Upstream> snapshot) {
+            delegate = snapshot;
+        }
+
+        @Override
+        public Upstream get(final int index) {
+            return delegate.get(index);
+        }
+
+        @Override
+        public int size() {
+            return delegate.size();
+        }
+
+        @Override
+        public Upstream set(final int index, final Upstream upstream) {
+            return writable().set(index, upstream);
+        }
+
+        @Override
+        public void add(final int index, final Upstream upstream) {
+            writable().add(index, upstream);
+            modCount++;
+        }
+
+        @Override
+        public Upstream remove(final int index) {
+            Upstream removed = writable().remove(index);
+            modCount++;
+            return removed;
+        }
+
+        @Override
+        protected void removeRange(final int fromIndex, final int toIndex) {
+            writable().subList(fromIndex, toIndex).clear();
+            modCount++;
+        }
+
+        private List<Upstream> writable() {
+            if (!copied) {
+                delegate = new ArrayList<>(delegate);
+                copied = true;
+            }
+            return delegate;
+        }
     }
 }

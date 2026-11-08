@@ -46,8 +46,6 @@ import reactor.core.Disposable;
 import reactor.test.StepVerifier;
 
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
 
@@ -109,7 +107,7 @@ public final class DividePluginCircuitBreakerTest {
         SpringBeanUtils.getInstance().setApplicationContext(applicationContext);
         when(applicationContext.getBean(ShenyuResult.class)).thenReturn(new DefaultShenyuResult());
         UpstreamCacheManager cacheManager = mock(UpstreamCacheManager.class);
-        when(cacheManager.findUpstreamListBySelectorId(SELECTOR_ID)).thenAnswer(invocation -> new ArrayList<>(Collections.singletonList(upstream)));
+        when(cacheManager.findUpstreamSnapshotBySelectorId(SELECTOR_ID)).thenAnswer(invocation -> List.of(upstream));
         this.cacheMock = mockStatic(UpstreamCacheManager.class);
         cacheMock.when(UpstreamCacheManager::getInstance).thenReturn(cacheManager);
     }
@@ -177,7 +175,7 @@ public final class DividePluginCircuitBreakerTest {
         elapseWaitWindow(breakerKey);
         Upstream healthy = Upstream.builder().protocol("http://").url("127.0.0.1:9091").build();
         UpstreamCacheManager cacheManager = mock(UpstreamCacheManager.class);
-        when(cacheManager.findUpstreamListBySelectorId(SELECTOR_ID)).thenAnswer(invocation -> new ArrayList<>(List.of(upstream, healthy)));
+        when(cacheManager.findUpstreamSnapshotBySelectorId(SELECTOR_ID)).thenAnswer(invocation -> List.of(upstream, healthy));
         cacheMock.when(UpstreamCacheManager::getInstance).thenReturn(cacheManager);
         when(chain.execute(exchange)).thenReturn(Mono.empty());
 
@@ -195,7 +193,7 @@ public final class DividePluginCircuitBreakerTest {
         elapseWaitWindow(breakerKey);
         Upstream healthy = Upstream.builder().protocol("http://").url("127.0.0.1:9091").build();
         UpstreamCacheManager cacheManager = mock(UpstreamCacheManager.class);
-        when(cacheManager.findUpstreamListBySelectorId(SELECTOR_ID)).thenAnswer(invocation -> new ArrayList<>(List.of(upstream, healthy)));
+        when(cacheManager.findUpstreamSnapshotBySelectorId(SELECTOR_ID)).thenAnswer(invocation -> List.of(upstream, healthy));
         cacheMock.when(UpstreamCacheManager::getInstance).thenReturn(cacheManager);
         this.exchange = MockServerWebExchange.from(MockServerHttpRequest.get("http://localhost/test")
                 .header(Constants.SPECIFY_DOMAIN, healthy.getUrl()).build());
@@ -260,7 +258,7 @@ public final class DividePluginCircuitBreakerTest {
         openBreaker();
         UpstreamCacheManager cacheManager = mock(UpstreamCacheManager.class);
         List<Upstream> upstreams = List.of(upstream, healthy);
-        when(cacheManager.findUpstreamListBySelectorId(SELECTOR_ID)).thenAnswer(invocation -> new ArrayList<>(upstreams));
+        when(cacheManager.findUpstreamSnapshotBySelectorId(SELECTOR_ID)).thenAnswer(invocation -> List.copyOf(upstreams));
         cacheMock.when(UpstreamCacheManager::getInstance).thenReturn(cacheManager);
         // the blocked upstream is filtered out, the request still goes through the healthy one
         when(chain.execute(exchange)).thenReturn(Mono.empty());
@@ -302,8 +300,8 @@ public final class DividePluginCircuitBreakerTest {
             exchange = MockServerWebExchange.from(MockServerHttpRequest.get("http://localhost/test")
                     .header(Constants.SPECIFY_DOMAIN, UPSTREAM_URL).build());
             exchange.getAttributes().put(Constants.CONTEXT, new ShenyuContext());
-            when(UpstreamCacheManager.getInstance().findUpstreamListBySelectorId(SELECTOR_ID))
-                    .thenAnswer(invocation -> new ArrayList<>(List.of(upstream, healthy)));
+            when(UpstreamCacheManager.getInstance().findUpstreamSnapshotBySelectorId(SELECTOR_ID))
+                    .thenAnswer(invocation -> List.of(upstream, healthy));
             when(chain.execute(exchange)).thenReturn(Mono.empty());
             StepVerifier.create(dividePlugin.doExecute(exchange, chain, selectorData, ruleData)).verifyComplete();
             assertEquals(healthy.buildDomain(), exchange.getAttribute(Constants.HTTP_DOMAIN));
@@ -344,8 +342,8 @@ public final class DividePluginCircuitBreakerTest {
         openBreaker();
         expireBreaker();
         Upstream healthy = Upstream.builder().protocol("http://").url("127.0.0.1:9093").build();
-        when(UpstreamCacheManager.getInstance().findUpstreamListBySelectorId(SELECTOR_ID))
-                .thenAnswer(invocation -> new ArrayList<>(List.of(healthy, upstream)));
+        when(UpstreamCacheManager.getInstance().findUpstreamSnapshotBySelectorId(SELECTOR_ID))
+                .thenAnswer(invocation -> List.of(healthy, upstream));
         Sinks.Empty<Void> probe = Sinks.empty();
         when(chain.execute(any())).thenAnswer(invocation -> {
             ServerWebExchange request = invocation.getArgument(0);
@@ -418,8 +416,8 @@ public final class DividePluginCircuitBreakerTest {
         openBreaker();
         expireBreaker();
         Upstream healthy = Upstream.builder().protocol("http://").url("127.0.0.1:9094").build();
-        when(UpstreamCacheManager.getInstance().findUpstreamListBySelectorId(SELECTOR_ID))
-                .thenAnswer(invocation -> new ArrayList<>(List.of(upstream, healthy)));
+        when(UpstreamCacheManager.getInstance().findUpstreamSnapshotBySelectorId(SELECTOR_ID))
+                .thenAnswer(invocation -> List.of(upstream, healthy));
         ServerWebExchange specified = MockServerWebExchange.from(MockServerHttpRequest.get("http://localhost/test")
                 .header(Constants.SPECIFY_DOMAIN, healthy.getUrl()).build());
         specified.getAttributes().put(Constants.CONTEXT, new ShenyuContext());

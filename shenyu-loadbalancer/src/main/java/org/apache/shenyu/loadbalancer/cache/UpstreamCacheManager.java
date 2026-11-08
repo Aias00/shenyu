@@ -131,6 +131,19 @@ public final class UpstreamCacheManager {
     }
 
     /**
+     * Find healthy upstreams without copying their membership for each request.
+     *
+     * <p>The list is immutable and remains stable across membership updates.
+     * Upstream objects are shared, preserving weight updates and runtime statistics.
+     *
+     * @param selectorId the selector id
+     * @return the immutable membership snapshot, or null if the selector is absent
+     */
+    public List<Upstream> findUpstreamSnapshotBySelectorId(final String selectorId) {
+        return task.getHealthyUpstreamSnapshot(selectorId);
+    }
+
+    /**
      * Remove by key.
      *
      * @param key the key
