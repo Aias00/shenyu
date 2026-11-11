@@ -58,6 +58,14 @@ import java.util.stream.Collectors;
 public class DefaultRetryStrategy<R> implements RetryStrategy<R> {
     private static final Logger LOG = LoggerFactory.getLogger(DefaultRetryStrategy.class);
 
+    // RetryBackoffSpec is copy-on-write; only the retry limit varies between requests.
+    private static final RetryBackoffSpec CURRENT_RETRY_TEMPLATE = Retry.backoff(1, Duration.ofMillis(20L))
+            .maxBackoff(Duration.ofSeconds(20L))
+            .transientErrors(true)
+            .jitter(0.5d)
+            .filter(DefaultRetryStrategy::isRetryable)
+            .onRetryExhaustedThrow((retryBackoffSpecErr, retrySignal) -> retryExhausted());
+
     private final AbstractHttpClientPlugin<R> httpClientPlugin;
 
     public DefaultRetryStrategy(final AbstractHttpClientPlugin<R> httpClientPlugin) {
@@ -69,12 +77,7 @@ public class DefaultRetryStrategy<R> implements RetryStrategy<R> {
         final String retryStrategy = (String) Optional.ofNullable(exchange.getAttribute(Constants.RETRY_STRATEGY)).orElseGet(() -> "current");
         if (RetryEnum.CURRENT.getName().equals(retryStrategy)) {
             //old version of DividePlugin and SpringCloudPlugin will run on this
-            RetryBackoffSpec retryBackoffSpec = Retry.backoff(retryTimes, Duration.ofMillis(20L))
-                    .maxBackoff(Duration.ofSeconds(20L))
-                    .transientErrors(true)
-                    .jitter(0.5d)
-                    .filter(DefaultRetryStrategy::isRetryable)
-                    .onRetryExhaustedThrow((retryBackoffSpecErr, retrySignal) -> retryExhausted());
+            RetryBackoffSpec retryBackoffSpec = CURRENT_RETRY_TEMPLATE.maxAttempts(retryTimes);
             Duration totalTimeout = RetryTimeoutUtils.totalTimeout(duration, retryTimes, Duration.ofSeconds(20));
             return clientResponse.retryWhen(retryBackoffSpec)
                     .timeout(totalTimeout, Mono.error(() -> new TimeoutException("Retry sequence took longer than timeout: " + totalTimeout)))
